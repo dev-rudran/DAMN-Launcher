@@ -1,0 +1,34 @@
+name: DAMN indexer
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: indexer/package.json
+      - run: npm ci
+        working-directory: indexer
+      - run: pip install curl_cffi
+        working-directory: indexer
+        if: ${{ matrix.os == '' }}  # placeholder, keep single job below
+        continue-on-error: true
+      - run: python3 -m pip install --user curl_cffi
+        working-directory: indexer
+        continue-on-error: true
+        if: ${{ runner.os == 'Linux' }}
+      - run: npm run index
+        working-directory: indexer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DAMN-index-${{ github.run_number }}
+          path: indexer/data
+          if-no-files-found: warn

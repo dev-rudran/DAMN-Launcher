@@ -1,0 +1,24 @@
+{
+  "proxy": "",
+  "sources": {
+    "fitgirl": {
+      "base": "https://fitgirl-repacks.site",
+      "maxPages": 0,
+      "slowDownMs": 400
+    },
+    "dodi": {
+      "base": "https://dodi-repacks.site",
+      "maxPages": 0,
+      "slowDownMs": 300
+    },
+    "ankergames": {
+      "base": "https://ankergames.net",
+      "slowDownMs": 300
+    }
+  },
+  "dataDir": "data",
+  "posterDir": "data/posters",
+  "posterOptimize": true,
+  "posterMaxBytes": 900000000,
+  "posterMaxCount": 6000
+}

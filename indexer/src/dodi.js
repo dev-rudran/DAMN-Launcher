@@ -1,0 +1,176 @@
+import { load } from 'cheerio';
+import { cleanText, parseDate, parseRequirements, grab, parseSize, parseKVBlock } from './extract.js';
+
+const SKIP_DODI = new Set([
+  'page', 'author', 'tag', 'category', 'feed', 'comments', 'sitemap.xml', 'robots.txt',
+  'contacts', 'farewell', 'troubleshooting', 'request', 'leaderboard', 'donations', 'blog',
+  'top-games', 'trending', 'hypervisor-repack', 'exclusive-repacks', 'free-offline-activations',
+  'all-my-repacks', 'search', '404', 'archive', 'archives', 'rss',
+]);
+
+function sectionText(text, marker) {
+  const m = text.toLowerCase().indexOf(marker);
+  if (m < 0) return null;
+  const start = m + marker.length;
+  const next = text.slice(start).match(/^(?:\s*#{2,3}\s+[^\n]+)/im);
+  return text.slice(start, next ? start + next.index : undefined).trim();
+}
+
+export async function crawlDodi(cfg, http, opts = {}) {
+  const base = cfg.sources.dodi.base;
+  const baseHost = new URL(base).hostname.replace(/^www\./, '');
+  const seen = new Set();
+  const games = [];
+  const postUrls = new Set();
+
+  async function addFromListing(url) {
+    const html = await http.text(url);
+    const $ = load(html);
+    $('a[href]').each((_, el) => {
+      const href = ($(el).attr('href') || '').trim();
+      if (!href) return;
+      let u;
+      try { u = new URL(href, base); } catch { return; }
+      if (u.hostname.replace(/^www\./, '') !== baseHost) return;
+      if (!u.pathname.match(/^\/[a-z0-9][a-z0-9\-]*\/?$/)) return;
+      const slug = (u.pathname.split('/').filter(Boolean).pop() || '').toLowerCase();
+      if (SKIP_DODI.has(slug)) return;
+      postUrls.add(u.href);
+    });
+  }
+
+  async function crawlPage(url) {
+    const html = await http.text(url);
+    const $ = load(html);
+    const bodyText = cleanText($('body').text());
+    const slug = new URL(url).pathname.split('/').filter(Boolean).pop() || '';
+    const id = `dodi:${slug}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+
+    const info = sectionText(bodyText, 'information');
+    const featuresText = sectionText(bodyText, 'repack features');
+    // Menu/non-game pages have neither Information nor Repack Features sections.
+    if (!info && !featuresText) return;
+
+    const h1 = cleanText($('h1').first().text() || '');
+    const title = h1.replace(/^#+\s*/, '').replace(/^\d+[-–:]\s*/, '').trim() || slug;
+
+    let date = null;
+    const dt = $('time[datetime]').first().attr('datetime');
+    if (dt) date = parseDate(dt);
+    if (!date) date = parseDate(grab(bodyText, /Posted on[^\[]*\[([^\]]+)\]/i) || grab(bodyText, /(\d{2}\/\d{2}\/\d{4}|\w+ \d{1,2}, \d{4})/));
+
+    const infoBlock = parseKVBlock(info || '', ['Title', 'Genre', 'Developer', 'Publisher', 'Release Date']);
+    const genres = infoBlock.genre
+      ? infoBlock.genre.split(/[,/;]/).map(cleanText).filter(Boolean)
+      : null;
+    const finalTitle = title;
+    const releaseDate = parseDate(infoBlock['release date']);
+    const devs = [];
+    for (const key of ['developer', 'publisher']) {
+      const v = infoBlock[key];
+      if (!v) continue;
+      devs.push(...v.split('\n')[0].split(',').map(cleanText).filter(Boolean).slice(0, 4));
+    }
+
+    const reqText = sectionText(bodyText, 'minimum system requirements');
+    const requirements = parseRequirements(reqText || '');
+
+    const version =
+      grab(bodyText, /game version[:\s]*([^\n;]+)/i) ||
+      grab(featuresText || '', /Game version\s*[:\-–]?\s*([^\n;]+)/i) ||
+      null;
+    const repackSize = parseSize(
+      grab(bodyText, /repack size\s*[:\-–]?\s*([^;\n]+)/i) ||
+        grab(featuresText || '', /Repack Size\s*[:\-–]?\s*([^\n]+)/i),
+    );
+    const finalSize = parseSize(grab(featuresText || '', /final size\s*[:\-–]?\s*([^\n]+)/i));
+    const installTime = grab(featuresText || '', /install(?:ation)? time\s*[:\-–]?\s*([^\n;]+)/i);
+    const languages = (grab(featuresText || '', /language[s]?\s*[:\-–]?\s*([^\n;]+)/i) || '')
+      .split(',').map(cleanText).filter(Boolean);
+
+    const greetings = grab(featuresText || '', /greetings\s*[:\-–]?\s*([^\n;]+)/i) || grab(bodyText, /greetings\s*[:\-–]?\s*([^\n;]+)/i);
+    const credits = [];
+    if (greetings) credits.push(...greetings.split(',').map(cleanText).filter(Boolean));
+    const repackBy = grab(featuresText || '', /repack by\s*[:\-–]?\s*([^\n;]+)/i);
+    if (repackBy) credits.push(...repackBy.split(',').map(cleanText).filter(Boolean));
+
+    const descText = sectionText(bodyText, 'description');
+    const description = descText ? descText.split('\n').slice(0, 6).join(' ').slice(0, 1800) : null;
+
+    const imgs = [];
+    const seenImgs = new Set();
+    $('img').each((_, el) => {
+      const src = ($(el).attr('src') || '').trim();
+      if (!src || src.startsWith('data:')) return;
+      if (seenImgs.has(src)) return;
+      seenImgs.add(src);
+      imgs.push(src);
+    });
+    const poster = imgs.find((s) => !s.includes('imageban.ru')) || imgs[0] || null;
+    const screenshots = poster ? imgs.filter((s) => s !== poster) : [];
+
+    const links = [];
+    $('a[href]').each((_, el) => {
+      const a = $(el);
+      const href = (a.attr('href') || '').trim();
+      if (!href || !/zovo\.to/.test(href)) return;
+      const text = cleanText(a.text());
+      const strong = a.closest('strong, b');
+      const label = strong ? cleanText(strong.text()) : '';
+      const m = label.match(/^(Torrent|SwiftUploads|FileKeeper|DataNodes|Mega|One Drive|OneShare|Uploaded|WeUpload|NitroFlare|DropArk|DropBox|ZOVO)[\s–-]*/);
+      const provider = m ? m[1] : (label && label.split(/[\s–-]+/).slice(0, 2).join(' ').trim()) || 'download';
+      links.push({ type: /torrent/i.test(provider) ? 'torrent' : 'filehoster', provider, url: href });
+    });
+
+    games.push({
+      id,
+      source: 'dodi',
+      slug,
+      site_url: url,
+      title: finalTitle,
+      name: finalTitle,
+      version,
+      date: date || releaseDate,
+      genres,
+      companies: devs,
+      languages,
+      repack_size: repackSize ? repackSize.label : null,
+      repack_size_bytes: repackSize ? repackSize.bytes : null,
+      final_size: finalSize ? finalSize.label : null,
+      requirements,
+      features: featuresText ? featuresText.split('\n').filter(Boolean).slice(0, 40) : [],
+      install_time: installTime,
+      description,
+      screenshots: screenshots.slice(0, 8),
+      poster,
+      credits,
+      links,
+      is_trending: false,
+    });
+  }
+
+  await addFromListing(base);
+  const paginationCap = cfg.sources.dodi.maxPages || 500;
+  for (let n = 2; n <= paginationCap; n++) {
+    if (opts.limit && postUrls.size > opts.limit * 4) break;
+    const before = postUrls.size;
+    try {
+      await addFromListing(`${base}/page/${n}`);
+    } catch {
+      break;
+    }
+    if (postUrls.size === before) break;
+  }
+
+  for (const url of postUrls) {
+    if (opts.limit && games.length >= opts.limit) break;
+    try {
+      await crawlPage(url);
+    } catch (e) {
+      console.error(`[dodi] crawl failed ${url}: ${e.message}`);
+    }
+  }
+  return games;
+}
