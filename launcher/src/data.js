@@ -1,9 +1,10 @@
 // App base path: the app is served at the Pages repo path (/DAMN-Launcher/) or
 // at the domain root when hosted elsewhere — derive it from the current URL.
+// Must be an absolute URL — `new URL(path, base)` throws on a relative base.
 export const BASE = (() => {
   const p = window.location.pathname
   const dir = p.slice(0, p.lastIndexOf('/') + 1)
-  return dir.startsWith('/') && dir.length > 0 ? dir : '/'
+  return window.location.origin + (dir || '/')
 })()
 
 export function appUrl(path) {
