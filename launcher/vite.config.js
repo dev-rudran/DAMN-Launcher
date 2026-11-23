@@ -8,7 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: { enabled: false },
-      base: '/',
+      base: '/DAMN-Launcher/',
       manifest: {
         name: 'DAMN Launcher',
         short_name: 'DAMN',

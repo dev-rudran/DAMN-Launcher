@@ -1,5 +1,18 @@
+// App base path: the app is served at the Pages repo path (/DAMN-Launcher/) or
+// at the domain root when hosted elsewhere — derive it from the current URL.
+export const BASE = (() => {
+  const p = window.location.pathname
+  const dir = p.slice(0, p.lastIndexOf('/') + 1)
+  return dir.startsWith('/') && dir.length > 0 ? dir : '/'
+})()
+
+export function appUrl(path) {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path
+  return new URL(path, BASE).href
+}
+
 export async function loadIndex() {
-  const res = await fetch('/data/index.json')
+  const res = await fetch(appUrl('data/index.json'))
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const data = await res.json()
   if (!data || !Array.isArray(data.games)) throw new Error('Invalid index data')
@@ -10,7 +23,7 @@ export function posterUrl(game) {
   if (!game || !game.poster) return placeholderFor(game)
   const p = game.poster
   if (p.startsWith('http://') || p.startsWith('https://')) return p
-  return new URL(p, '/data/').href
+  return appUrl(p.startsWith('data/') ? p : `data/${p}`)
 }
 
 export function placeholderFor(game) {
