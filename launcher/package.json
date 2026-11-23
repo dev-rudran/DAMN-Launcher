@@ -1,0 +1,23 @@
+{
+  "name": "damn-launcher-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "sync-data": "node scripts/sync-data.mjs"
+  },
+  "dependencies": {
+    "svelte": "^4"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3",
+    "vite": "^5",
+    "vite-plugin-pwa": "^0.20"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}
