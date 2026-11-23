@@ -7,7 +7,7 @@ export async function loadIndex() {
 }
 
 export function posterUrl(game) {
-  if (!game || !game.poster) return null
+  if (!game || !game.poster) return placeholderFor(game)
   const p = game.poster
   if (p.startsWith('http://') || p.startsWith('https://')) return p
   return new URL(p, '/data/').href

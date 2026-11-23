@@ -3,9 +3,9 @@ import { cleanText, parseDate, parseRequirements, grab, parseSize, parseKVBlock 
 
 const SKIP_DODI = new Set([
   'page', 'author', 'tag', 'category', 'feed', 'comments', 'sitemap.xml', 'robots.txt',
-  'contacts', 'farewell', 'troubleshooting', 'request', 'leaderboard', 'donations', 'blog',
-  'top-games', 'trending', 'hypervisor-repack', 'exclusive-repacks', 'free-offline-activations',
-  'all-my-repacks', 'search', '404', 'archive', 'archives', 'rss',
+  'contacts', 'farewell', 'troubleshooting', 'request', 'leaderboard', 'donations', 'donation',
+  'donate', 'blog', 'top-games', 'trending', 'hypervisor-repack', 'exclusive-repacks',
+  'free-offline-activations', 'all-my-repacks', 'search', '404', 'archive', 'archives', 'rss',
 ]);
 
 function sectionText(text, marker) {

@@ -51,16 +51,19 @@ function crawlGamePage(cfg, card) {
     const poster = $('img[src*="/uploads/poster/"]').first().attr('src') || card.poster || null;
 
     const version =
-      bodyText.match(/Current Version[^\n]{0,60}/i)?.[0]
-        ?.replace(/Current Version\s*[:\-–]?\s*/i, '')
-        .trim()
-        .slice(0, 40) ||
+      (() => {
+        const spans = $('span').map((_, el) => cleanText($(el).text())).get()
+        const i = spans.findIndex((s) => /^current version\s*$/i.test(s))
+        if (i >= 0 && spans[i + 1]) return spans[i + 1]
+        const m = bodyText.match(/Current Version[^\n]{0,30}/i)
+        return m ? m[0].replace(/^Current Version\s*/i, '').trim() : null
+      })() ||
       grab(html, /"softwareVersion"\s*:\s*"([^"]+)"/i) ||
       card.version ||
       null;
     const size =
       grab(html, /"fileSize"\s*:\s*"([^"]+)"/i) ||
-      grab(bodyText, /PC\s+([\d.]+)\s*(GB|MB|KB|TB)/i) ||
+      grab(bodyText, /\bPC\s+([\d.]+)\s*(GB|MB|KB|TB)/i) ||
       card.size ||
       null;
     const repackSize = parseSize(size);
@@ -70,10 +73,14 @@ function crawlGamePage(cfg, card) {
       .map(cleanText)
       .filter(Boolean);
 
-    const genres = $('a[href*="/genre/"]')
-      .map((_, el) => cleanText($(el).text()))
-      .get()
-      .filter(Boolean);
+    const genres = [
+      ...new Set(
+        $('a[href*="/genre/"]')
+          .slice(0, 12)
+          .map((_, el) => cleanText($(el).text()))
+          .get(),
+      ),
+    ].filter(Boolean);
 
     // Requirements: prefer the embedded JSON blob, fall back to visible text.
     let requirements = {};

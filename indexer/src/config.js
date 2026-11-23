@@ -29,5 +29,8 @@ export function loadConfig() {
     root,
     dataDir: path.join(root, file.dataDir || 'data'),
     posterDir: path.join(root, file.posterDir || path.join('data', 'posters')),
+    posterOptimize: file.posterOptimize ?? true,
+    posterMaxBytes: file.posterMaxBytes ?? 900e6,
+    posterMaxCount: file.posterMaxCount ?? 6000,
   };
 }

@@ -33,11 +33,7 @@ async function main() {
   }
   const games = sortGames(dedupeById(all));
 
-  if (cfg.limit) {
-    console.log(`[indexer] --limit set (${cfg.limit}): not writing index.`);
-    console.log(JSON.stringify(games.slice(0, cfg.limit).map(({ title, source, date, repack_size }) => ({ title, source, date, repack_size })), null, 2));
-    return;
-  }
+  // --limit bounds the crawl time; the partial index is still written.
 
   await runPosters(cfg, http, games);
   await fs.mkdir(cfg.dataDir, { recursive: true });
