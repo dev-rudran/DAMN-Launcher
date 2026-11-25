@@ -8,12 +8,24 @@ const SKIP_DODI = new Set([
   'free-offline-activations', 'all-my-repacks', 'search', '404', 'archive', 'archives', 'rss',
 ]);
 
+const SECTION_HEADERS = [
+  'information', 'minimum system requirements', 'recommended system requirements', 'requirements',
+  'repack features', 'features', 'description', 'how to install', 'installation', 'links',
+  'screenshots', 'languages', 'notes', 'changelog', 'download', 'download links',
+];
 function sectionText(text, marker) {
-  const m = text.toLowerCase().indexOf(marker);
+  const low = text.toLowerCase();
+  const m = low.indexOf(marker);
   if (m < 0) return null;
   const start = m + marker.length;
-  const next = text.slice(start).match(/^(?:\s*#{2,3}\s+[^\n]+)/im);
-  return text.slice(start, next ? start + next.index : undefined).trim();
+  const rest = low.slice(start);
+  let end = rest.length;
+  for (const h of SECTION_HEADERS) {
+    if (h === marker) continue;
+    const idx = rest.indexOf('\n' + h);
+    if (idx >= 0 && idx + 1 < end) end = idx + 1;
+  }
+  return text.slice(start, start + end).trim();
 }
 
 export async function crawlDodi(cfg, http, opts = {}) {
@@ -42,7 +54,25 @@ export async function crawlDodi(cfg, http, opts = {}) {
   async function crawlPage(url) {
     const html = await http.text(url);
     const $ = load(html);
-    const bodyText = cleanText($('body').text());
+    // Convert <br> and block boundaries to newlines so sections keep their structure.
+    const $entry = $('.entry-content').length ? $('.entry-content') : $('article').length ? $('article') : $('main');
+    const entryHtml = $entry.length ? $entry.html() : $('body').html();
+    const withBreaks = String(entryHtml)
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|li|div|tr|h\d|section)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ');
+    const bodyText = cleanText(
+      withBreaks
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;|&apos;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/[ \t]+/g, ' ')
+    );
     const slug = new URL(url).pathname.split('/').filter(Boolean).pop() || '';
     const id = `dodi:${slug}`;
     if (seen.has(id)) return;
@@ -77,10 +107,11 @@ export async function crawlDodi(cfg, http, opts = {}) {
     const reqText = sectionText(bodyText, 'minimum system requirements');
     const requirements = parseRequirements(reqText || '');
 
-    const version =
-      grab(bodyText, /game version[:\s]*([^\n;]+)/i) ||
-      grab(featuresText || '', /Game version\s*[:\-–]?\s*([^\n;]+)/i) ||
+    const versionRaw =
+      grab(bodyText, /game version[:\s]*([^\n;|]+)/i) ||
+      grab(featuresText || '', /Game version\s*[:\-–]?\s*([^\n;|]+)/i) ||
       null;
+    const version = versionRaw ? versionRaw.replace(/^v+\s*/i, 'v').replace(/\s*v\s*$/, '').trim() : null;
     const repackSize = parseSize(
       grab(bodyText, /repack size\s*[:\-–]?\s*([^;\n]+)/i) ||
         grab(featuresText || '', /Repack Size\s*[:\-–]?\s*([^\n]+)/i),
@@ -99,7 +130,6 @@ export async function crawlDodi(cfg, http, opts = {}) {
     const descText = sectionText(bodyText, 'description');
     const description = descText ? descText.split('\n').slice(0, 6).join(' ').slice(0, 1800) : null;
 
-    const $entry = $('.entry-content').length ? $('.entry-content') : $('article').length ? $('article') : $('main');
     const imgs = [];
     const seenImgs = new Set();
     $entry.find('img').each((_, el) => {
@@ -115,19 +145,36 @@ export async function crawlDodi(cfg, http, opts = {}) {
     const pool = usable.length ? usable : imgs;
     // Game box art on DODI is hosted externally (imageban/fastpic); it is never a chrome banner.
     const poster = pool.find((s) => /imageban\.ru|fastpic\.ru|fastpic\.org/.test(s)) || pool[0] || null;
-    const screenshots = poster ? imgs.filter((s) => s !== poster) : imgs;
+    const screenshots = (poster ? pool.filter((s) => s !== poster) : pool).slice(0, 8);
 
     const links = [];
-    $('a[href]').each((_, el) => {
+    const seenLinks = new Set();
+    const KNOWN = ['Torrent', 'SwiftUploads', 'FileKeeper', 'DataNodes', 'Mega', 'One Drive', 'OneShare', 'Uploaded', 'WeUpload', 'NitroFlare', 'DropArk', 'DropBox', 'CrackFix', 'Mediafire', '1Fichier', 'VikingFile'];
+    // Provider label sits in the enclosing strong/paragraph, e.g. "Torrent – Click Here – or – Click Here".
+    const blocks = $('a[href]').toArray().map((el) => {
       const a = $(el);
       const href = (a.attr('href') || '').trim();
-      if (!href || !/zovo\.to/.test(href)) return;
-      const text = cleanText(a.text());
-      const strong = a.closest('strong, b');
-      const label = strong ? cleanText(strong.text()) : '';
-      const m = label.match(/^(Torrent|SwiftUploads|FileKeeper|DataNodes|Mega|One Drive|OneShare|Uploaded|WeUpload|NitroFlare|DropArk|DropBox|ZOVO)[\s–-]*/);
-      const provider = m ? m[1] : (label && label.split(/[\s–-]+/).slice(0, 2).join(' ').trim()) || 'download';
-      links.push({ type: /torrent/i.test(provider) ? 'torrent' : 'filehoster', provider, url: href });
+      if (!href || !/zovo\.to/.test(href)) return null;
+      const holder = a.closest('p, li, div, strong, b');
+      const text = holder.length ? cleanText(holder.text()) : cleanText(a.text());
+      const found = KNOWN.find((k) => new RegExp('(^|\\b)' + k.replace(/ /g, '\\s*') + '\\b', 'i').test(text));
+      if (!found) return null;
+      if (!seenLinks.has(found + '|' + href)) {
+        seenLinks.add(found + '|' + href);
+        const provider = found.replace(/\s+/g, ' ').trim();
+        links.push({ type: /torrent/i.test(provider) ? 'torrent' : 'filehoster', provider, url: href });
+      }
+      return true;
+    });
+    // Keep source order, dedupe by URL; number repeated providers (Torrent 1, Torrent 2, ...)
+    const byUrl = new Map();
+    for (const l of links) if (!byUrl.has(l.url)) byUrl.set(l.url, l);
+    const counts = new Map();
+    const finalLinks = [...byUrl.values()].map((l) => {
+      const n = (counts.get(l.provider) || 0) + 1;
+      counts.set(l.provider, n);
+      const total = [...byUrl.values()].filter((x) => x.provider === l.provider).length;
+      return total > 1 ? { ...l, provider: `${l.provider} ${n}` } : l;
     });
 
     games.push({
@@ -152,7 +199,7 @@ export async function crawlDodi(cfg, http, opts = {}) {
       screenshots: screenshots.slice(0, 8),
       poster,
       credits,
-      links,
+      links: finalLinks,
       is_trending: false,
     });
   }

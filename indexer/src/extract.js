@@ -61,17 +61,28 @@ export function parseDate(s) {
   return null;
 }
 
-/** Parse "OS: Windows 10/11", "Processor: Intel ...", "Storage: 145 GB" style lines into an object. */
+const REQ_KEYS = ['os', 'processor', 'cpu', 'memory', 'ram', 'graphics', 'gpu', 'directx', 'storage', 'hard drive', 'sound card', 'sound', 'os notes', 'notes'];
+
+/** Parse "OS: Windows 10/11" style "Key: Value" pairs out of a flattened blob.
+ *  Requires a line break OR a known-key boundary before each key, so trailing
+ *  page furniture / JSON-LD never turns into fake requirements. */
 export function parseRequirements(text) {
+  if (!text) return {};
+  const flat = '\n' + String(text).replace(/[^\S\n]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+  const re = /(?:^|\n|[.;]\s*)\s*(os|processor|cpu|memory|ram|graphics|gpu|directx|storage|hard drive|sound card|sound)\s*:\s*/gi;
+  const matches = [...flat.matchAll(re)];
   const out = {};
-  if (!text) return out;
-  const lines = String(text).split('\n');
-  for (const line of lines) {
-    const m = line.match(/^\s*([A-Za-z][A-Za-z .\-]{0,30}):\s*(.+)$/);
-    if (!m) continue;
-    const key = m[1].trim().toLowerCase().replace(/\s+/g, ' ');
-    if (Object.prototype.hasOwnProperty.call(out, key)) continue;
-    out[key] = cleanText(m[2]).slice(0, 300);
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const key = m[1].toLowerCase().replace(/\s+/g, ' ');
+    const canon = { cpu: 'processor', ram: 'memory', gpu: 'graphics', 'hard drive': 'storage', sound: 'sound card' }[key] || key;
+    const start = m.index + m[0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index : flat.length;
+    let v = cleanText(flat.slice(start, end))
+      .replace(/\s*(game version|language|repack size|final size|install time|repack by|\[collapse\]|description|how to install|download links?)\b[\s\S]*$/i, '')
+      .replace(/[\[(]?\s*(\[collapse\])?[\s\].;,]*$/i, '')
+      .trim();
+    if (v) out[canon] = v.slice(0, 300);
   }
   return out;
 }
