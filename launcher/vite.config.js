@@ -12,8 +12,8 @@ export default defineConfig({
       manifest: {
         name: 'DAMN Launcher',
         short_name: 'DAMN',
-        id: '/',
-        start_url: '/',
+        id: '/DAMN-Launcher/',
+        start_url: '/DAMN-Launcher/',
         display: 'standalone',
         description: 'Game launcher for repack libraries (FitGirl, DODI, AnkerGames), built for controllers.',
         theme_color: '#0a0d13',
@@ -26,7 +26,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,webmanifest,svg,png,ico,json}'],
         globIgnores: ['data/posters/**'],
-        navigateFallback: '/index.html',
+        navigateFallback: '/DAMN-Launcher/index.html',
         skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
