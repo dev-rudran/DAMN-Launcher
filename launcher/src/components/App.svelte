@@ -25,9 +25,9 @@
   let soundsOn = true
   let lastTick = 0
 
-  $: visible = computeVisible()
+  $: visible = computeVisible(games, sourceFilter, favoritesOn, trendingOn, searchQ, favorites)
 
-  function computeVisible() {
+  function computeVisible(games, sourceFilter, favoritesOn, trendingOn, searchQ, favorites) {
     let out = games
     if (sourceFilter) out = out.filter((g) => g.source === sourceFilter)
     if (favoritesOn) out = out.filter((g) => favorites.has(g.id))
@@ -204,7 +204,7 @@
 
 <div class="app theme-{theme}">
   <TopBar
-    {games}
+    gameCount={games.length}
     {meta}
     {favorites}
     {favoritesOn}
@@ -230,7 +230,7 @@
       />
     {:else}
       <Details
-        {details}
+        game={details}
         favorite={favorites.has(details.id)}
         onOpen={openDownload}
         onBack={onBack}

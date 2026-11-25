@@ -99,17 +99,23 @@ export async function crawlDodi(cfg, http, opts = {}) {
     const descText = sectionText(bodyText, 'description');
     const description = descText ? descText.split('\n').slice(0, 6).join(' ').slice(0, 1800) : null;
 
+    const $entry = $('.entry-content').length ? $('.entry-content') : $('article').length ? $('article') : $('main');
     const imgs = [];
     const seenImgs = new Set();
-    $('img').each((_, el) => {
+    $entry.find('img').each((_, el) => {
       const src = ($(el).attr('src') || '').trim();
       if (!src || src.startsWith('data:')) return;
       if (seenImgs.has(src)) return;
       seenImgs.add(src);
       imgs.push(src);
     });
-    const poster = imgs.find((s) => !s.includes('imageban.ru')) || imgs[0] || null;
-    const screenshots = poster ? imgs.filter((s) => s !== poster) : [];
+    // Skip tiny banners/icons (e.g. site promos) by preferring large images.
+    const bannerish = (s) => /(-\d{2,3}x\d{2,3}\.)|(\/uploads\/\d{4}\/\d{2}\/(test2|Free|HV|PC-Recompiled))/i.test(s);
+    const usable = imgs.filter((s) => !bannerish(s));
+    const pool = usable.length ? usable : imgs;
+    // Game box art on DODI is hosted externally (imageban/fastpic); it is never a chrome banner.
+    const poster = pool.find((s) => /imageban\.ru|fastpic\.ru|fastpic\.org/.test(s)) || pool[0] || null;
+    const screenshots = poster ? imgs.filter((s) => s !== poster) : imgs;
 
     const links = [];
     $('a[href]').each((_, el) => {

@@ -13,7 +13,7 @@
     },
     "ankergames": {
       "base": "https://ankergames.net",
-      "slowDownMs": 300
+      "slowDownMs": 1200
     }
   },
   "dataDir": "data",

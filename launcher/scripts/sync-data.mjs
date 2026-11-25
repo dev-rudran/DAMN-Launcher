@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
@@ -11,6 +11,8 @@ if (!existsSync(resolve(src, 'index.json'))) {
   process.exit(0)
 }
 
+// Clean destination first so trimmed/regenerated posters don't linger.
+if (existsSync(dest)) rmSync(dest, { recursive: true, force: true })
 mkdirSync(dest, { recursive: true })
 cpSync(src, dest, { recursive: true, force: true })
 console.log(`[sync] copied index.json + posters to ${dest}`)

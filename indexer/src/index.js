@@ -31,9 +31,18 @@ async function main() {
       console.error(`[indexer] ${name} FAILED: ${e.message}`);
     }
   }
-  const games = sortGames(dedupeById(all));
+  // --limit bounds the crawl; merge with the existing index by id so a
+  // partial run refreshes what it re-crawled and keeps everything else.
+  const outPath = path.join(cfg.dataDir, 'index.json');
+  const byId = new Map();
+  try {
+    const existing = JSON.parse(await fs.readFile(outPath, 'utf8'));
+    if (Array.isArray(existing?.games)) for (const g of existing.games) if (g?.id) byId.set(g.id, g);
+    if (byId.size) console.log(`[indexer] merging with ${byId.size} existing games`);
+  } catch { /* no existing index */ }
+  for (const g of all) if (g?.id) byId.set(g.id, g);
 
-  // --limit bounds the crawl time; the partial index is still written.
+  const games = sortGames(dedupeById([...byId.values()]));
 
   await runPosters(cfg, http, games);
   await fs.mkdir(cfg.dataDir, { recursive: true });
@@ -47,9 +56,8 @@ async function main() {
     },
     games,
   };
-  const out = path.join(cfg.dataDir, 'index.json');
-  await fs.writeFile(out, JSON.stringify(index));
-  console.log(`[indexer] wrote ${games.length} games -> ${out}`);
+  await fs.writeFile(outPath, JSON.stringify(index));
+  console.log(`[indexer] wrote ${games.length} games -> ${outPath}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

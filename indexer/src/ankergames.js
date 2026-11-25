@@ -9,12 +9,28 @@ const execFileAsync = promisify(execFile);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PY_SCRIPT = path.join(HERE, 'anker_fetch.py');
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /** Fetch HTML from ankergames.net via python/curl_cffi (Cloudflare blocks plain fetch). */
-async function ankerText(url) {
-  const { stdout } = await execFileAsync(process.env.DAMN_PYTHON || 'python3', [PY_SCRIPT, url], {
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return stdout;
+async function ankerText(url, { retries = 4, baseDelay = 4000 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const { stdout } = await execFileAsync(process.env.DAMN_PYTHON || 'python3', [PY_SCRIPT, url], {
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      return stdout;
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e?.message || e);
+      const retriable = /429|5\d\d|ECONNRESET|ETIMEDOUT|timeout|network/i.test(msg);
+      if (!retriable || attempt === retries - 1) throw e;
+      const wait = baseDelay * Math.pow(2, attempt) + Math.floor(Math.random() * 1000);
+      console.warn(`[anker] retry ${attempt + 1}/${retries - 1} in ${wait}ms for ${url}`);
+      await sleep(wait);
+    }
+  }
+  throw lastErr;
 }
 
 function cardsFromList($) {
@@ -165,6 +181,7 @@ export async function crawlAnkerGames(cfg, opts = {}) {
     if (opts.limit && main.length >= opts.limit) break;
     const g = await crawlCard(card);
     if (g) main.push(g);
+    await sleep(cfg.sources?.ankergames?.slowDownMs ?? 1200);
   }
 
   // Trending pages (best effort; don't fail the whole crawl if missing).

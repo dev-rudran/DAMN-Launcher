@@ -4,7 +4,7 @@
 
   const dispatch = createEventDispatcher()
 
-  export let games = 0
+  export let gameCount = 0
   export let meta = {}
   export let favorites = new Set()
   export let favoritesOn = false
@@ -25,7 +25,7 @@
   <div class="brand">
     <span class="logo">DAMN</span>
     <span class="tagline">Launcher</span>
-    <span class="count">{games} games</span>
+    <span class="count">{gameCount} games</span>
     {#if meta?.version}<span class="ver">v{meta.version}</span>{/if}
   </div>
   <div class="top-right">
